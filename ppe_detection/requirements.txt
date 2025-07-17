@@ -1,6 +1,0 @@
-pyyaml
-scikit-learn
-torch
-timm
-opencv-python
-boxmot
