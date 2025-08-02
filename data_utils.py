@@ -27,6 +27,12 @@ def create_stratified_subset(data, labels, fraction, random_state=42):
     )
     return subset_data, subset_labels
 
+def prepare_dataset(data_fraction=1.0, random_state=42):
+    """
+    Prepares the dataset by loading data and creating a stratified subset if required.
+
+    Args:
+
 def prepare_dataset(config, data_fraction=1.0, random_state=42):
     """
     Prepares the dataset by loading data and creating a stratified subset if required.
@@ -51,6 +57,13 @@ def prepare_dataset(data_dir, data_fraction=1.0, random_state=42):
     Returns:
         tuple: A tuple containing the data and labels.
     """
+    if CONFIG['data_source'] == 'roboflow':
+        rf = Roboflow(api_key=CONFIG['roboflow']['api_key'])
+        project = rf.workspace(CONFIG['roboflow']['workspace']).project(CONFIG['roboflow']['project'])
+        dataset = project.version(CONFIG['roboflow']['version']).download("yolov5")
+        data_dir = dataset.location
+    else:
+        data_dir = CONFIG['data_dir']
 
 
 
@@ -96,6 +109,10 @@ def generate_temp_data_yaml(subset_data, yaml_path='temp_data.yaml'):
 
 if __name__ == '__main__':
     # Example usage:
+    from config import CONFIG
+    if CONFIG:
+        data, labels = prepare_dataset(CONFIG, data_fraction=0.5)
+        generate_temp_data_yaml(data)
     from config import load_config
     config = load_config()
     if config:
@@ -105,4 +122,3 @@ if __name__ == '__main__':
 
     data, labels = prepare_dataset('data/', data_fraction=0.5)
     generate_temp_data_yaml(data)
-
