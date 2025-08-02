@@ -27,13 +27,14 @@ def create_stratified_subset(data, labels, fraction, random_state=42):
     )
     return subset_data, subset_labels
 
-
 def prepare_dataset(config, data_fraction=1.0, random_state=42):
     """
     Prepares the dataset by loading data and creating a stratified subset if required.
 
     Args:
         config (dict): The configuration dictionary.
+
+
 
 def prepare_dataset(data_dir, data_fraction=1.0, random_state=42):
     """
@@ -43,12 +44,15 @@ def prepare_dataset(data_dir, data_fraction=1.0, random_state=42):
     Args:
         data_dir (str): The directory where the data is located.
 
+
         data_fraction (float): The fraction of the data to use.
         random_state (int): The random state for reproducibility.
 
     Returns:
         tuple: A tuple containing the data and labels.
     """
+
+
 
     if config['data_source'] == 'roboflow':
         rf = Roboflow(api_key=config['roboflow']['api_key'])
@@ -97,6 +101,7 @@ if __name__ == '__main__':
     if config:
         data, labels = prepare_dataset(config, data_fraction=0.5)
         generate_temp_data_yaml(data)
+
 
     data, labels = prepare_dataset('data/', data_fraction=0.5)
     generate_temp_data_yaml(data)

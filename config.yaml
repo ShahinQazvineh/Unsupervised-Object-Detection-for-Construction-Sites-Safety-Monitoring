@@ -1,6 +1,5 @@
 # Configuration for Unsupervised PPE Detection
 
-
 # -- Workflow and Path Configuration ---
 project_root_path: "/content/drive/MyDrive/PPE_Violation_Detection_Project"
 
