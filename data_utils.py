@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from roboflow import Roboflow
 
+
 def create_stratified_subset(data, labels, fraction, random_state=42):
     """
     Creates a stratified subset of the data.
@@ -32,12 +33,27 @@ def prepare_dataset(config, data_fraction=1.0, random_state=42):
 
     Args:
         config (dict): The configuration dictionary.
+
+
+
+def prepare_dataset(data_dir, data_fraction=1.0, random_state=42):
+    """
+    Prepares the dataset by loading data and creating a stratified subset if required.
+    This is a placeholder function and needs to be adapted to the actual data format.
+
+    Args:
+        data_dir (str): The directory where the data is located.
+
+
         data_fraction (float): The fraction of the data to use.
         random_state (int): The random state for reproducibility.
 
     Returns:
         tuple: A tuple containing the data and labels.
     """
+
+
+
     if config['data_source'] == 'roboflow':
         rf = Roboflow(api_key=config['roboflow']['api_key'])
         project = rf.workspace(config['roboflow']['workspace']).project(config['roboflow']['project'])
@@ -85,3 +101,8 @@ if __name__ == '__main__':
     if config:
         data, labels = prepare_dataset(config, data_fraction=0.5)
         generate_temp_data_yaml(data)
+
+
+    data, labels = prepare_dataset('data/', data_fraction=0.5)
+    generate_temp_data_yaml(data)
+
