@@ -1,5 +1,17 @@
 # Configuration for Unsupervised PPE Detection
 
+
+# -- Workflow and Path Configuration ---
+project_root_path: "/content/drive/MyDrive/PPE_Violation_Detection_Project"
+
+# --- Data Source Configuration ---
+data_source: "roboflow"
+roboflow:
+  api_key: "YOUR_ROBOFLOW_API_KEY"
+  workspace: "skcet-g4h72"
+  project: "construction-ppe-rdhzo"
+  version: 3
+
 # -- Project Paths --
 data_dir: 'data/'
 output_dir: 'output/'

@@ -2,6 +2,8 @@ import os
 import yaml
 import numpy as np
 from sklearn.model_selection import train_test_split
+from roboflow import Roboflow
+
 
 def create_stratified_subset(data, labels, fraction, random_state=42):
     """
@@ -25,6 +27,14 @@ def create_stratified_subset(data, labels, fraction, random_state=42):
     )
     return subset_data, subset_labels
 
+
+def prepare_dataset(config, data_fraction=1.0, random_state=42):
+    """
+    Prepares the dataset by loading data and creating a stratified subset if required.
+
+    Args:
+        config (dict): The configuration dictionary.
+
 def prepare_dataset(data_dir, data_fraction=1.0, random_state=42):
     """
     Prepares the dataset by loading data and creating a stratified subset if required.
@@ -32,12 +42,23 @@ def prepare_dataset(data_dir, data_fraction=1.0, random_state=42):
 
     Args:
         data_dir (str): The directory where the data is located.
+
         data_fraction (float): The fraction of the data to use.
         random_state (int): The random state for reproducibility.
 
     Returns:
         tuple: A tuple containing the data and labels.
     """
+
+    if config['data_source'] == 'roboflow':
+        rf = Roboflow(api_key=config['roboflow']['api_key'])
+        project = rf.workspace(config['roboflow']['workspace']).project(config['roboflow']['project'])
+        dataset = project.version(config['roboflow']['version']).download("yolov5")
+        data_dir = dataset.location
+    else:
+        data_dir = config['data_dir']
+
+
     # This is a placeholder. In a real scenario, you would load your images and labels here.
     # For demonstration purposes, we'll create some dummy data.
     print("Loading and preparing data...")
@@ -71,5 +92,12 @@ def generate_temp_data_yaml(subset_data, yaml_path='temp_data.yaml'):
 
 if __name__ == '__main__':
     # Example usage:
+    from config import load_config
+    config = load_config()
+    if config:
+        data, labels = prepare_dataset(config, data_fraction=0.5)
+        generate_temp_data_yaml(data)
+
     data, labels = prepare_dataset('data/', data_fraction=0.5)
     generate_temp_data_yaml(data)
+
