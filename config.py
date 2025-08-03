@@ -5,7 +5,7 @@ from pathlib import Path
 # All paths, hyperparameters, and settings are managed here.
 CONFIG_YAML = """
 # --- Workflow and Path Configuration ---
-project_root_path: "/content/drive/MyDrive/PPE_Violation_Detection_Project"
+project_root_path: "/content/drive/MyDrive/Unsupervised_PPE_Detection"
 
 # --- Data Source Configuration ---
 data_source: "roboflow"
@@ -45,6 +45,7 @@ discovery:
 # -- Violation Detection --
 violation:
   tracker: 'botsort'
+  bot_sort_reid_weights: 'osnet_x0_25_msmt17.pt' # Default weights for BoTSORT
 """
 
 # Load the YAML configuration into a dictionary
