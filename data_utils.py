@@ -49,10 +49,10 @@ def prepare_dataset(data_fraction=1.0, random_state=42):
         data_dir = CONFIG['data_dir_abs']
 
     image_paths = []
-    for ext in ['*.jpg', '*.jpeg', '*.png']:
-        image_paths.extend(glob.glob(os.path.join(data_dir, 'train/images', ext)))
+    for split in ['train', 'valid', 'test']:
+        for ext in ['*.jpg', '*.jpeg', '*.png']:
+            image_paths.extend(glob.glob(os.path.join(data_dir, split, 'images', ext)))
 
-    image_paths = glob.glob(os.path.join(data_dir, 'train/images/*'))
     labels = []
     for img_path in image_paths:
         # Construct the label path by replacing 'images' with 'labels' and '.ext' with '.txt'
