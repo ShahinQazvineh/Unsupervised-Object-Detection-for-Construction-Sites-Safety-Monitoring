@@ -1,26 +1,39 @@
 import os
 import torch
 import timm
+import copy
 from config import CONFIG
+from dino_loss import DINOLoss
 
 class UnsupervisedTrainer:
     def __init__(self, config):
-        """
-        Initializes the UnsupervisedTrainer.
-
-        Args:
-            config (dict): The configuration dictionary.
-        """
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = self._build_model()
+
+        # Create student and teacher models
+        self.student = self._build_model()
+        self.teacher = self._build_model()
+
+        # Teacher model does not require gradients
+        for p in self.teacher.parameters():
+            p.requires_grad = False
+
+        # Make sure teacher and student have same weights
+        self.teacher.load_state_dict(self.student.state_dict())
+
+        self.dino_loss = DINOLoss(
+            out_dim=self.config['model']['out_dim'],
+            n_crops=self.config['dino']['n_crops'],
+            warmup_teacher_temp=self.config['dino']['warmup_teacher_temp'],
+            teacher_temp=self.config['dino']['teacher_temp'],
+            warmup_teacher_temp_epochs=self.config['dino']['warmup_teacher_temp_epochs'],
+            n_epochs=self.config['training']['epochs']
+        ).to(self.device)
+
         self.optimizer = self._build_optimizer()
         self.start_epoch = 0
 
     def _build_model(self):
-        """
-        Builds the DINOv2 model.
-        """
         model_name = self.config['model']['name']
         pretrained = self.config['model']['pretrained']
         print(f"Loading model: {model_name} (pretrained: {pretrained})")
@@ -28,105 +41,70 @@ class UnsupervisedTrainer:
         return model.to(self.device)
 
     def _build_optimizer(self):
-        """
-        Builds the optimizer.
-        """
         optimizer_name = self.config['training']['optimizer'].lower()
         learning_rate = self.config['training']['learning_rate']
-        if optimizer_name == 'adam':
-            optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
+        if optimizer_name == 'adamw':
+            optimizer = torch.optim.AdamW(self.student.parameters(), lr=learning_rate)
         else:
             raise ValueError(f"Unsupported optimizer: {optimizer_name}")
         return optimizer
 
     def _load_checkpoint(self, checkpoint_path):
-        """
-        Loads a checkpoint.
-        """
         if not os.path.exists(checkpoint_path):
             print(f"Checkpoint not found at {checkpoint_path}. Starting from scratch.")
             return
-
-        print(f"Loading checkpoint from {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.student.load_state_dict(checkpoint['student_state_dict'])
+        self.teacher.load_state_dict(checkpoint['teacher_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.start_epoch = checkpoint['epoch'] + 1
+        print(f"Resumed from epoch {self.start_epoch}")
 
     def _save_checkpoint(self, epoch):
-        """
-        Saves a checkpoint.
-        """
         checkpoint_dir = self.config['checkpoint_dir_abs']
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
-
-        checkpoint_path = os.path.join(checkpoint_dir, f'latest_checkpoint.pt')
+        checkpoint_path = os.path.join(checkpoint_dir, 'latest_checkpoint.pt')
         torch.save({
             'epoch': epoch,
-            'model_state_dict': self.model.state_dict(),
+            'student_state_dict': self.student.state_dict(),
+            'teacher_state_dict': self.teacher.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
         }, checkpoint_path)
         print(f"Checkpoint saved at {checkpoint_path}")
 
-    def freeze_layers(self, num_layers_to_freeze):
-        """
-        Freezes the initial layers of the model.
-        """
-        # This is a simplified example. The actual implementation depends on the model architecture.
-        # For a Vision Transformer, you might freeze the patch embedding and the first N transformer blocks.
-        ct = 0
-        for child in self.model.children():
-            if ct < num_layers_to_freeze:
-                for param in child.parameters():
-                    param.requires_grad = False
-                ct += 1
-        print(f"Froze {num_layers_to_freeze} layers.")
-
+    @torch.no_grad()
+    def _update_teacher(self, epoch):
+        m = self.config['dino']['momentum_teacher']
+        for student_param, teacher_param in zip(self.student.parameters(), self.teacher.parameters()):
+            teacher_param.data.mul_(m).add_((1 - m) * student_param.data)
 
     def train(self, data_loader):
-        """
-        The main training loop.
-        """
         if self.config['training']['resume_training']:
             checkpoint_path = os.path.join(self.config['checkpoint_dir_abs'], 'latest_checkpoint.pt')
             self._load_checkpoint(checkpoint_path)
 
-        num_layers_to_freeze = self.config['model'].get('frozen_layers', 0)
-        if num_layers_to_freeze > 0:
-            self.freeze_layers(num_layers_to_freeze)
-
-        # Define a simple loss function for demonstration (e.g., reconstruction loss)
-        # In a real self-supervised scenario, this would be more complex (e.g., DINO loss)
-        loss_fn = torch.nn.MSELoss()
-
         from tqdm import tqdm
 
         for epoch in range(self.start_epoch, self.config['training']['epochs']):
-            self.model.train()
+            self.student.train()
             loop = tqdm(data_loader, leave=True)
             loop.set_description(f"Epoch {epoch}/{self.config['training']['epochs']}")
 
             total_loss = 0.0
             for i, (images, _) in enumerate(loop):
-                images = images.to(self.device)
+                images = [img.to(self.device) for img in images]
 
-                # Zero the gradients
+                teacher_output = self.teacher(images[:2]) # only global views pass through the teacher
+                student_output = self.student(images)
+
+                loss = self.dino_loss(student_output, teacher_output, epoch)
+
                 self.optimizer.zero_grad()
-
-                # Forward pass
-                outputs = self.model(images)
-
-                # For a simple reconstruction loss, we'd compare the output to the input.
-                # Note: This requires the model output size to match the input size.
-                # A ViT's output is a class token, so this is just illustrative.
-                # We'll create a dummy target for the loss calculation to make it run.
-                dummy_target = torch.randn_like(outputs)
-                loss = loss_fn(outputs, dummy_target)
-
-                # Backward pass and optimization
                 loss.backward()
                 self.optimizer.step()
+
+                self._update_teacher(epoch)
 
                 total_loss += loss.item()
                 loop.set_postfix(loss=loss.item())
