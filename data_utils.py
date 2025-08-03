@@ -52,6 +52,7 @@ def prepare_dataset(data_fraction=1.0, random_state=42):
     for ext in ['*.jpg', '*.jpeg', '*.png']:
         image_paths.extend(glob.glob(os.path.join(data_dir, 'train/images', ext)))
 
+    image_paths = glob.glob(os.path.join(data_dir, 'train/images/*'))
     labels = []
     for img_path in image_paths:
         # Construct the label path by replacing 'images' with 'labels' and '.ext' with '.txt'
