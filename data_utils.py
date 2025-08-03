@@ -69,22 +69,23 @@ def prepare_dataset(data_fraction=1.0, random_state=42):
     image_paths = []
     labels = []
     for img_path in all_image_paths:
-        # Find the corresponding label file
         img_base_name = os.path.splitext(os.path.basename(img_path))[0]
 
-        # Roboflow sometimes adds suffixes like .rf.HASH
-        # We need to strip this to find the matching label
-        label_base_name = img_base_name.split('.rf.')[0]
+        # Find a matching label key that the image base name starts with
+        found_match = False
+        for label_base_name in all_label_paths.keys():
+            if img_base_name.startswith(label_base_name):
+                label_path = all_label_paths[label_base_name]
+                from PIL import Image
+                with Image.open(img_path) as img:
+                    width, height = img.size
+                boxes = parse_yolo_labels(label_path, width, height)
+                labels.append(boxes)
+                image_paths.append(img_path)
+                found_match = True
+                break # Move to the next image once a match is found
 
-        if label_base_name in all_label_paths:
-            label_path = all_label_paths[label_base_name]
-            from PIL import Image
-            with Image.open(img_path) as img:
-                width, height = img.size
-            boxes = parse_yolo_labels(label_path, width, height)
-            labels.append(boxes)
-            image_paths.append(img_path)
-        else:
+        if not found_match:
             print(f"Warning: Label file not found for image: {img_path}")
 
 
