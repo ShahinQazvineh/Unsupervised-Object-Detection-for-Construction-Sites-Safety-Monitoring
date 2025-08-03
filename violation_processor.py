@@ -2,6 +2,7 @@ from boxmot import BotSort
 import numpy as np
 import torch
 from pathlib import Path
+from config import CONFIG
 
 class ViolationProcessor:
     def __init__(self, config):
@@ -13,6 +14,9 @@ class ViolationProcessor:
         """
         self.config = config
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        weights = Path(self.config['bot_sort_reid_weights'])
+        self.tracker = BotSort(
+            reid_weights=weights,
         weights = Path('osnet_x0_25_msmt17.pt')
         self.tracker = BotSort(
             reid_weights=weights, # Placeholder, will be downloaded automatically
@@ -60,6 +64,10 @@ class ViolationProcessor:
             class_id = int(obj[5])
             # Assuming class_id 0 is person, 1 is helmet, 2 is vest
             # This mapping should be consistent with the discovery process
+            if class_id == self.config['person_class_id']: # Person
+                if track_id not in persons:
+                    persons[track_id] = {'helmet': False, 'vest': False}
+            elif class_id in self.config['required_ppe_ids']: # PPE
             if class_id == 0: # Person
                 if track_id not in persons:
                     persons[track_id] = {'helmet': False, 'vest': False}
@@ -68,6 +76,11 @@ class ViolationProcessor:
                 # to check for spatial proximity (e.g., IoU) between the person and the helmet.
                 # For now, we'll just assume any helmet in the frame is worn by any person.
                  for person_id in persons:
+                    if class_id == self.config['helmet_class_id']:
+                        persons[person_id]['helmet'] = True
+                    elif class_id == self.config['vest_class_id']:
+                        persons[person_id]['vest'] = True
+
                     persons[person_id]['helmet'] = True
             elif class_id == 2: # Vest
                  for person_id in persons:
@@ -76,6 +89,9 @@ class ViolationProcessor:
         # Check for violations
         for person_id, equipment in persons.items():
             if not equipment['helmet']:
+                violations.append({'person_id': person_id, 'violation': self.config['violation_map'][self.config['helmet_class_id']]})
+            if not equipment['vest']:
+                violations.append({'person_id': person_id, 'violation': self.config['violation_map'][self.config['vest_class_id']]})
                 violations.append({'person_id': person_id, 'violation': 'no_helmet'})
             if not equipment['vest']:
                 violations.append({'person_id': person_id, 'violation': 'no_vest'})
@@ -89,6 +105,12 @@ if __name__ == '__main__':
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from config import CONFIG
+
+    # Example usage:
+    if CONFIG:
+        violation_processor = ViolationProcessor(CONFIG)
+
     from config import load_config
 
     # Example usage:

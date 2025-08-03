@@ -2,6 +2,7 @@ import torch
 import timm
 import cv2
 import numpy as np
+from config import CONFIG
 from config import load_config
 
 class DiscoveryProcessor:
@@ -103,6 +104,10 @@ if __name__ == '__main__':
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from config import CONFIG
+
+    # Example usage:
+    if CONFIG:
     from config import load_config
 
     # Example usage:
@@ -113,6 +118,7 @@ if __name__ == '__main__':
 
         # Initialize the discovery processor
         # We are not providing a model_path, so it will use the pretrained model
+        discovery_processor = DiscoveryProcessor(CONFIG)
         discovery_processor = DiscoveryProcessor(config)
 
         # Generate object masks
