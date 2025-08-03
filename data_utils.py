@@ -48,10 +48,11 @@ def prepare_dataset(data_fraction=1.0, random_state=42):
     else:
         data_dir = CONFIG['data_dir_abs']
 
-    image_paths = glob.glob(os.path.join(data_dir, 'train/images/*.jpg'))
+    image_paths = glob.glob(os.path.join(data_dir, 'train/images/*.*'))
     labels = []
     for img_path in image_paths:
-        label_path = img_path.replace('images', 'labels').replace('.jpg', '.txt')
+        base, _ = os.path.splitext(img_path)
+        label_path = base.replace('images', 'labels') + '.txt'
         # We need the image dimensions to convert YOLO format to pixel coordinates.
         # We'll get this from the image itself.
         from PIL import Image
