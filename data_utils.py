@@ -48,18 +48,31 @@ def prepare_dataset(data_fraction=1.0, random_state=42):
     else:
         data_dir = CONFIG['data_dir_abs']
 
-    image_paths = glob.glob(os.path.join(data_dir, 'train/images/*.*'))
+    image_paths = []
+    for ext in ['*.jpg', '*.jpeg', '*.png']:
+        image_paths.extend(glob.glob(os.path.join(data_dir, 'train/images', ext)))
+
     labels = []
     for img_path in image_paths:
-        base, _ = os.path.splitext(img_path)
-        label_path = base.replace('images', 'labels') + '.txt'
+        # Construct the label path by replacing 'images' with 'labels' and '.ext' with '.txt'
+        label_path = img_path.replace('images', 'labels')
+        base, _ = os.path.splitext(label_path)
+        label_path = base + '.txt'
+
         # We need the image dimensions to convert YOLO format to pixel coordinates.
-        # We'll get this from the image itself.
         from PIL import Image
         with Image.open(img_path) as img:
             width, height = img.size
-        boxes = parse_yolo_labels(label_path, width, height)
-        labels.append(boxes)
+
+        try:
+            boxes = parse_yolo_labels(label_path, width, height)
+            labels.append(boxes)
+        except FileNotFoundError:
+            print(f"Warning: Label file not found for image: {img_path}")
+            # Handle cases where a label file might be missing for an image.
+            # Depending on the use case, you might want to skip the image
+            # or add an empty list of boxes. For now, we'll append empty boxes.
+            labels.append([])
 
 
     if data_fraction < 1.0:
