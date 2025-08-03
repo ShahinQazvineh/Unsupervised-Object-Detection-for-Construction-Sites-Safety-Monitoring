@@ -96,17 +96,43 @@ class UnsupervisedTrainer:
         if num_layers_to_freeze > 0:
             self.freeze_layers(num_layers_to_freeze)
 
+        # Define a simple loss function for demonstration (e.g., reconstruction loss)
+        # In a real self-supervised scenario, this would be more complex (e.g., DINO loss)
+        loss_fn = torch.nn.MSELoss()
+
+        from tqdm import tqdm
 
         for epoch in range(self.start_epoch, self.config['training']['epochs']):
-            print(f"Epoch {epoch}/{self.config['training']['epochs']}")
-            # --- Training logic goes here ---
-            # This will be a self-supervised training loop.
-            # For demonstration, we'll just simulate a training step.
-            for i, (images, labels) in enumerate(data_loader):
+            self.model.train()
+            loop = tqdm(data_loader, leave=True)
+            loop.set_description(f"Epoch {epoch}/{self.config['training']['epochs']}")
+
+            total_loss = 0.0
+            for i, (images, _) in enumerate(loop):
                 images = images.to(self.device)
-                # Forward pass, loss calculation, backward pass, optimizer step...
-                if i % 10 == 0:
-                    print(f"  Batch {i}/{len(data_loader)}")
+
+                # Zero the gradients
+                self.optimizer.zero_grad()
+
+                # Forward pass
+                outputs = self.model(images)
+
+                # For a simple reconstruction loss, we'd compare the output to the input.
+                # Note: This requires the model output size to match the input size.
+                # A ViT's output is a class token, so this is just illustrative.
+                # We'll create a dummy target for the loss calculation to make it run.
+                dummy_target = torch.randn_like(outputs)
+                loss = loss_fn(outputs, dummy_target)
+
+                # Backward pass and optimization
+                loss.backward()
+                self.optimizer.step()
+
+                total_loss += loss.item()
+                loop.set_postfix(loss=loss.item())
+
+            avg_loss = total_loss / len(data_loader)
+            print(f"Epoch {epoch} finished with average loss: {avg_loss:.4f}")
 
             self._save_checkpoint(epoch)
 
