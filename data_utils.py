@@ -48,7 +48,7 @@ def prepare_dataset(data_fraction=1.0, random_state=42):
     else:
         data_dir = CONFIG['data_dir_abs']
 
-    image_paths = glob.glob(os.path.join(data_dir, 'train/images/*.*'))
+    image_paths = glob.glob(os.path.join(data_dir, 'train/images/*'))
     labels = []
     for img_path in image_paths:
         base, _ = os.path.splitext(img_path)
