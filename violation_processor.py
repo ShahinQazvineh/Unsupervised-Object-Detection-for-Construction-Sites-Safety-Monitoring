@@ -17,6 +17,9 @@ class ViolationProcessor:
         weights = Path(self.config['bot_sort_reid_weights'])
         self.tracker = BotSort(
             reid_weights=weights,
+        weights = Path('osnet_x0_25_msmt17.pt')
+        self.tracker = BotSort(
+            reid_weights=weights, # Placeholder, will be downloaded automatically
             device=device,
             half=False
         )
@@ -65,6 +68,10 @@ class ViolationProcessor:
                 if track_id not in persons:
                     persons[track_id] = {'helmet': False, 'vest': False}
             elif class_id in self.config['required_ppe_ids']: # PPE
+            if class_id == 0: # Person
+                if track_id not in persons:
+                    persons[track_id] = {'helmet': False, 'vest': False}
+            elif class_id == 1: # Helmet
                 # This is a simplified association. A real implementation would need
                 # to check for spatial proximity (e.g., IoU) between the person and the helmet.
                 # For now, we'll just assume any helmet in the frame is worn by any person.
@@ -74,6 +81,10 @@ class ViolationProcessor:
                     elif class_id == self.config['vest_class_id']:
                         persons[person_id]['vest'] = True
 
+                    persons[person_id]['helmet'] = True
+            elif class_id == 2: # Vest
+                 for person_id in persons:
+                    persons[person_id]['vest'] = True
 
         # Check for violations
         for person_id, equipment in persons.items():
@@ -81,6 +92,9 @@ class ViolationProcessor:
                 violations.append({'person_id': person_id, 'violation': self.config['violation_map'][self.config['helmet_class_id']]})
             if not equipment['vest']:
                 violations.append({'person_id': person_id, 'violation': self.config['violation_map'][self.config['vest_class_id']]})
+                violations.append({'person_id': person_id, 'violation': 'no_helmet'})
+            if not equipment['vest']:
+                violations.append({'person_id': person_id, 'violation': 'no_vest'})
 
 
         print(f"Detected {len(violations)} violations.")
@@ -96,6 +110,13 @@ if __name__ == '__main__':
     # Example usage:
     if CONFIG:
         violation_processor = ViolationProcessor(CONFIG)
+
+    from config import load_config
+
+    # Example usage:
+    config = load_config()
+    if config:
+        violation_processor = ViolationProcessor(config)
         # Example discovered objects
         discovered_objects = [
             {'class_name': 'person', 'box': [100, 100, 200, 400]},

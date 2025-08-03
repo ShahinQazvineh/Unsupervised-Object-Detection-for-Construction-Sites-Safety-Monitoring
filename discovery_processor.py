@@ -3,6 +3,7 @@ import timm
 import cv2
 import numpy as np
 from config import CONFIG
+from config import load_config
 
 class DiscoveryProcessor:
     def __init__(self, config, model_path=None):
@@ -107,12 +108,18 @@ if __name__ == '__main__':
 
     # Example usage:
     if CONFIG:
+    from config import load_config
+
+    # Example usage:
+    config = load_config()
+    if config:
         # Create a dummy image
         dummy_image = np.zeros((480, 640, 3), dtype=np.uint8)
 
         # Initialize the discovery processor
         # We are not providing a model_path, so it will use the pretrained model
         discovery_processor = DiscoveryProcessor(CONFIG)
+        discovery_processor = DiscoveryProcessor(config)
 
         # Generate object masks
         masks = discovery_processor.generate_object_masks(dummy_image)
