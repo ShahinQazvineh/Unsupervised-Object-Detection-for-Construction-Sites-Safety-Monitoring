@@ -14,7 +14,10 @@ class ViolationProcessor:
         """
         self.config = config
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        weights = Path(self.config['bot_sort_reid_weights'])
+        # Use .get() to provide a default value if the key is missing
+        reid_weights_path = self.config.get('bot_sort_reid_weights', 'osnet_x0_25_msmt17.pt')
+        weights = Path(reid_weights_path)
+
         self.tracker = BotSort(
             reid_weights=weights,
             device=device,

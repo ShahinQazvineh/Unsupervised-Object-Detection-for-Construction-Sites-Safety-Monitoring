@@ -48,32 +48,44 @@ def prepare_dataset(data_fraction=1.0, random_state=42):
     else:
         data_dir = CONFIG['data_dir_abs']
 
-    image_paths = []
+    all_image_paths = []
+    all_label_paths = {}
+
     for split in ['train', 'valid', 'test']:
+        image_dir = os.path.join(data_dir, split, 'images')
+        label_dir = os.path.join(data_dir, split, 'labels')
+
+        if not os.path.isdir(image_dir):
+            continue
+
         for ext in ['*.jpg', '*.jpeg', '*.png']:
-            image_paths.extend(glob.glob(os.path.join(data_dir, split, 'images', ext)))
+            all_image_paths.extend(glob.glob(os.path.join(image_dir, ext)))
 
+        for label_file in glob.glob(os.path.join(label_dir, '*.txt')):
+            # Key the label paths by their filename without extension
+            base_name = os.path.splitext(os.path.basename(label_file))[0]
+            all_label_paths[base_name] = label_file
+
+    image_paths = []
     labels = []
-    for img_path in image_paths:
-        # Construct the label path by replacing 'images' with 'labels' and '.ext' with '.txt'
-        label_path = img_path.replace('images', 'labels')
-        base, _ = os.path.splitext(label_path)
-        label_path = base + '.txt'
+    for img_path in all_image_paths:
+        # Find the corresponding label file
+        img_base_name = os.path.splitext(os.path.basename(img_path))[0]
 
-        # We need the image dimensions to convert YOLO format to pixel coordinates.
-        from PIL import Image
-        with Image.open(img_path) as img:
-            width, height = img.size
+        # Roboflow sometimes adds suffixes like .rf.HASH
+        # We need to strip this to find the matching label
+        label_base_name = img_base_name.split('.rf.')[0]
 
-        try:
+        if label_base_name in all_label_paths:
+            label_path = all_label_paths[label_base_name]
+            from PIL import Image
+            with Image.open(img_path) as img:
+                width, height = img.size
             boxes = parse_yolo_labels(label_path, width, height)
             labels.append(boxes)
-        except FileNotFoundError:
+            image_paths.append(img_path)
+        else:
             print(f"Warning: Label file not found for image: {img_path}")
-            # Handle cases where a label file might be missing for an image.
-            # Depending on the use case, you might want to skip the image
-            # or add an empty list of boxes. For now, we'll append empty boxes.
-            labels.append([])
 
 
     if data_fraction < 1.0:
