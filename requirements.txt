@@ -1,5 +1,7 @@
 pyyaml
 scikit-learn
+scikit-image
+scipy
 torch
 timm
 opencv-python

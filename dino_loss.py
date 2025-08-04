@@ -51,8 +51,11 @@ class DINOLoss(nn.Module):
         Update center used for teacher output.
         """
         batch_center = torch.sum(teacher_output, dim=0, keepdim=True)
-        torch.distributed.all_reduce(batch_center)
-        batch_center = batch_center / (len(teacher_output) * torch.distributed.get_world_size())
+        if torch.distributed.is_initialized():
+            torch.distributed.all_reduce(batch_center)
+            batch_center = batch_center / (len(teacher_output) * torch.distributed.get_world_size())
+        else:
+            batch_center = batch_center / len(teacher_output)
 
         # ema update
         self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
