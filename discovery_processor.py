@@ -2,123 +2,135 @@ import torch
 import timm
 import cv2
 import numpy as np
+from PIL import Image
+from torchvision import transforms
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from skimage.measure import find_contours
 from config import CONFIG
 
 class DiscoveryProcessor:
     def __init__(self, config, model_path=None):
-        """
-        Initializes the DiscoveryProcessor.
-
-        Args:
-            config (dict): The configuration dictionary.
-            model_path (str, optional): Path to the fine-tuned model. If None, the pretrained model is loaded.
-        """
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = self._build_model(model_path)
-        self.class_map = self.config['discovery']['class_map']
+        self.model.eval()
+
+        # Hook to extract features from an intermediate layer
+        self.features = None
+        layer_index = self.config['model'].get('feature_layer', 8)
+        self.model.blocks[layer_index].register_forward_hook(self._get_features_hook())
 
     def _build_model(self, model_path):
-        """
-        Builds the DINOv2 model and loads the fine-tuned weights if provided.
-        """
         model_name = self.config['model']['name']
         model = timm.create_model(model_name, pretrained=True)
-        print(f"Model image size: {model.patch_embed.img_size}")
-
 
         if model_path:
             print(f"Loading fine-tuned model from {model_path}")
             checkpoint = torch.load(model_path, map_location=self.device)
-            model.load_state_dict(checkpoint['model_state_dict'])
+            # Adjust key loading based on actual checkpoint structure
+            state_dict = checkpoint.get('student_state_dict', checkpoint.get('model_state_dict', checkpoint))
+            model.load_state_dict(state_dict)
 
         return model.to(self.device)
 
-    def get_attention_maps(self, image):
-        """
-        Gets the attention maps from the model for a given image.
-        This is a simplified example and might need adjustments based on the model's architecture.
-        """
-        # The hook to get the attention maps
-        def get_attention(module, input, output):
-            self.attention = output
+    def _get_features_hook(self):
+        def hook(model, input, output):
+            self.features = output.detach()
+        return hook
 
-        # Register the hook on the last attention layer
-        # This needs to be adapted to the specific model architecture
-        # For ViT, it's usually the last block's attention
-        handle = self.model.blocks[-1].attn.register_forward_hook(get_attention)
+    def _preprocess_image(self, image):
+        # Image is expected to be a numpy array (H, W, C)
+        transform = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+        return transform(image).unsqueeze(0).to(self.device)
 
-        # Preprocess the image and pass it through the model
-        # This is a placeholder for actual image preprocessing
-        img_size = self.model.patch_embed.img_size
-        input_tensor = torch.randn(1, 3, img_size[0], img_size[1]).to(self.device) # Dummy tensor
+    def discover_objects(self, image, n_clusters=5, pca_dim=10):
+        """
+        Discovers objects in an image using feature clustering.
+        """
+        input_tensor = self._preprocess_image(image)
+
         with torch.no_grad():
-            _ = self.model(input_tensor)
+            self.model(input_tensor)
 
-        print(f"Attention shape: {self.attention.shape}")
+        # Features are (1, num_patches + 1, dim), remove CLS token
+        patch_features = self.features[:, 1:, :].squeeze(0).cpu().numpy()
 
-        handle.remove() # Remove the hook
-        return self.attention
+        # PCA for dimensionality reduction
+        if pca_dim > 0 and patch_features.shape[1] > pca_dim:
+            pca = PCA(n_components=pca_dim)
+            patch_features = pca.fit_transform(patch_features)
 
-    def generate_object_masks(self, image):
-        """
-        Generates object masks from the attention maps.
-        """
-        attentions = self.get_attention_maps(image).squeeze(0)
-        # The attention tensor is 3D: (num_patches + 1, num_heads, dim_per_head)
-        # We are interested in the attention from the class token to the patches
-        # which is the first row of the attention matrix.
-        # However, the output of the attention layer in timm's ViT is not the attention matrix.
-        # It's the output of the attention layer.
-        # To get the attention maps, we need to modify the forward pass of the attention layer.
-        # For simplicity, we will just reshape the output and average over the heads.
-        # This is a very rough approximation of object discovery.
-        num_patches = attentions.shape[0] - 1
-        w_featmap = h_featmap = int(np.sqrt(num_patches))
-        attentions = attentions[1:, :] # remove cls token
-        attentions = attentions.mean(axis=1) # average over heads
-        mask = attentions.reshape(w_featmap, h_featmap)
-        mask = cv2.resize(mask.cpu().numpy(), (image.shape[1], image.shape[0]))
-        # Threshold the mask to get a binary mask
-        _, mask = cv2.threshold(mask, mask.mean(), 255, cv2.THRESH_BINARY)
-        return mask.astype(np.uint8)
+        # K-Means clustering
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        clusters = kmeans.fit_predict(patch_features)
 
-    def apply_class_map(self, discovered_objects):
-        """
-        Applies the manual class map to assign semantic labels.
-        This is a placeholder as the object discovery is not implemented yet.
-        """
-        # In a real scenario, `discovered_objects` would be a list of objects,
-        # each with a cluster ID. This function would map the cluster ID to a class name.
-        labeled_objects = []
-        for obj in discovered_objects:
-            cluster_id = obj['cluster_id']
-            if cluster_id in self.class_map:
-                obj['class_name'] = self.class_map[cluster_id]
-                labeled_objects.append(obj)
-        return labeled_objects
+        # Reshape clusters to image patch grid
+        patch_size = self.model.patch_embed.patch_size[0]
+        grid_size = 224 // patch_size
+        mask = clusters.reshape(grid_size, grid_size)
+
+        # Upscale mask to original image size
+        full_size_mask = cv2.resize(mask.astype(np.uint8),
+                                    (image.shape[1], image.shape[0]),
+                                    interpolation=cv2.INTER_NEAREST)
+
+        discovered_objects = []
+        for cluster_id in range(n_clusters):
+            # Create a binary mask for the current cluster
+            cluster_mask = (full_size_mask == cluster_id).astype(np.uint8)
+
+            # Find contours
+            contours = find_contours(cluster_mask, 0.5)
+
+            for contour in contours:
+                # Convert contour to bounding box
+                y_min, x_min = contour.min(axis=0)
+                y_max, x_max = contour.max(axis=0)
+
+                # Filter out very small boxes
+                if (x_max - x_min > 10) and (y_max - y_min > 10):
+                    discovered_objects.append({
+                        'box': [int(x_min), int(y_min), int(x_max), int(y_max)],
+                        'cluster_id': cluster_id
+                    })
+
+        return discovered_objects, full_size_mask
 
 if __name__ == '__main__':
-    # Add the project root to the Python path
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from config import CONFIG
-
-    # Example usage:
     if CONFIG:
         # Create a dummy image
         dummy_image = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.rectangle(dummy_image, (100, 100), (200, 300), (255, 0, 0), -1)
+        cv2.rectangle(dummy_image, (300, 200), (450, 400), (0, 255, 0), -1)
 
-        # Initialize the discovery processor
-        # We are not providing a model_path, so it will use the pretrained model
         discovery_processor = DiscoveryProcessor(CONFIG)
 
-        # Generate object masks
-        masks = discovery_processor.generate_object_masks(dummy_image)
-        print(f"Generated masks with shape: {masks.shape}")
+        # Discover objects
+        discovered_objects, mask = discovery_processor.discover_objects(dummy_image, n_clusters=3)
 
-        # In a real scenario, you would have a list of discovered objects
-        # with cluster IDs to test the apply_class_map function.
-        # For now, we'll just show that the processor can be initialized.
-        print("DiscoveryProcessor initialized successfully.")
+        print(f"Discovered {len(discovered_objects)} objects.")
+
+        # Visualize the result
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(12, 6))
+        plt.subplot(1, 2, 1)
+        plt.imshow(dummy_image)
+        plt.title('Original Image')
+
+        plt.subplot(1, 2, 2)
+        plt.imshow(mask, cmap='viridis')
+        plt.title('Discovered Segments')
+
+        for obj in discovered_objects:
+            x1, y1, x2, y2 = obj['box']
+            plt.gca().add_patch(plt.Rectangle((x1, y1), x2 - x1, y2 - y1,
+                                            edgecolor='red', facecolor='none', lw=2))
+
+        plt.show()
+        print("DiscoveryProcessor executed successfully.")

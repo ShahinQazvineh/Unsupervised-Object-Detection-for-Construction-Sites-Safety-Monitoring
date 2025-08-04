@@ -5,7 +5,7 @@ from pathlib import Path
 # All paths, hyperparameters, and settings are managed here.
 CONFIG_YAML = """
 # --- Workflow and Path Configuration ---
-project_root_path: "/content/drive/MyDrive/Unsupervised_PPE_Detection"
+# project_root_path is now set dynamically below.
 
 # --- Data Source Configuration ---
 data_source: "roboflow"
@@ -65,20 +65,25 @@ except yaml.YAMLError as e:
     CONFIG = {}
 
 # --- Dynamic Path Construction ---
-# After loading, construct the absolute paths based on the project_root_path.
+# Set the project root path dynamically to the current working directory.
+# This makes the project more portable.
 if CONFIG:
-    try:
-        root = Path(CONFIG['project_root_path'])
-        out_base_abs = root / CONFIG['output_dir']
+    # Set and create the project root path
+    project_root = Path.cwd()
+    CONFIG['project_root_path'] = str(project_root)
 
-        CONFIG['data_dir_abs'] = root / CONFIG['data_dir']
-        CONFIG['output_dir_abs'] = out_base_abs
-        CONFIG['checkpoint_dir_abs'] = out_base_abs / CONFIG['checkpoint_dir']
+    # Create absolute paths for other directories
+    output_dir = project_root / CONFIG['output_dir']
+    checkpoint_dir = output_dir / 'checkpoints'
 
-    except KeyError as e:
-        print(f"ERROR: A required key is missing from the base YAML config for path construction: {e}")
-    except Exception as e:
-        print(f"ERROR: An unexpected error occurred during dynamic path construction: {e}")
+    CONFIG['data_dir_abs'] = project_root / CONFIG['data_dir']
+    CONFIG['output_dir_abs'] = output_dir
+    CONFIG['checkpoint_dir_abs'] = checkpoint_dir
+
+    # Create directories if they don't exist
+    output_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    (project_root / CONFIG['data_dir']).mkdir(parents=True, exist_ok=True)
 
 if __name__ == '__main__':
     if CONFIG:

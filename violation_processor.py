@@ -24,69 +24,77 @@ class ViolationProcessor:
             half=False
         )
 
+    def _calculate_iou(self, boxA, boxB):
+        """
+        Calculates the Intersection over Union (IoU) of two bounding boxes.
+        """
+        xA = max(boxA[0], boxB[0])
+        yA = max(boxA[1], boxB[1])
+        xB = min(boxA[2], boxB[2])
+        yB = min(boxA[3], boxB[3])
+
+        interArea = max(0, xB - xA) * max(0, yB - yA)
+        boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+        boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+
+        iou = interArea / float(boxAArea + boxBArea - interArea)
+        return iou
+
     def process_violations(self, discovered_objects, frame):
         """
-        Processes the discovered objects to detect violations.
-
-        Args:
-            discovered_objects (list): A list of dictionaries, where each dictionary
-                                       represents a detected object with its class name
-                                       and bounding box in the format [x1, y1, x2, y2].
-            frame (np.array): The current video frame.
-
-        Returns:
-            list: A list of detected violations.
+        Processes discovered objects to detect safety violations using spatial association.
         """
-        # Convert the discovered objects to the format expected by BoTSORT
-        # which is a numpy array of shape (n, 6) with columns [x1, y1, x2, y2, score, class_id]
-        detections = []
-        for obj in discovered_objects:
-            box = obj['box']
-            # We'll use a dummy score and class_id for now
-            detections.append(box + [1.0, 0])
-        detections = np.array(detections)
+        # Use a dummy confidence score and the actual class_id from discovery
+        detections = np.array(
+            [obj['box'] + [1.0, obj['class_id']] for obj in discovered_objects]
+        )
+
+        if detections.shape[0] == 0:
+            return []
 
         # Update the tracker
         tracked_objects = self.tracker.update(detections, frame)
 
-        violations = []
-        # Example violation logic:
-        # First, we need to map the tracked objects back to their class names.
-        # This is a bit tricky since the tracker only deals with boxes and IDs.
-        # For now, we'll assume the class_id from the input is preserved.
-        # A more robust solution would be to associate the tracked boxes with the
-        # initial detections.
-
-        # Create a dictionary to hold the tracked persons and their associated equipment
         persons = {}
-        for obj in tracked_objects:
-            track_id = int(obj[4])
-            class_id = int(obj[5])
-            # Assuming class_id 0 is person, 1 is helmet, 2 is vest
-            # This mapping should be consistent with the discovery process
-            if class_id == self.config['person_class_id']: # Person
-                if track_id not in persons:
-                    persons[track_id] = {'helmet': False, 'vest': False}
-            elif class_id in self.config['required_ppe_ids']: # PPE
-                # This is a simplified association. A real implementation would need
-                # to check for spatial proximity (e.g., IoU) between the person and the helmet.
-                # For now, we'll just assume any helmet in the frame is worn by any person.
-                 for person_id in persons:
-                    if class_id == self.config['helmet_class_id']:
-                        persons[person_id]['helmet'] = True
-                    elif class_id == self.config['vest_class_id']:
-                        persons[person_id]['vest'] = True
+        ppes = []
 
+        # Separate persons and PPE from tracked objects
+        for obj in tracked_objects:
+            x1, y1, x2, y2, track_id, class_id, _ = obj
+            box = [int(x1), int(y1), int(x2), int(y2)]
+            track_id = int(track_id)
+            class_id = int(class_id)
+
+            if class_id == self.config['discovery']['class_map'].get('person', -1):
+                persons[track_id] = {'box': box, 'helmet': False, 'vest': False}
+            elif class_id in [self.config['discovery']['class_map'].get('helmet', -2),
+                              self.config['discovery']['class_map'].get('vest', -3)]:
+                ppes.append({'box': box, 'class_id': class_id})
+
+        # Associate PPE with persons based on IoU
+        for person_id, person_data in persons.items():
+            person_box = person_data['box']
+            for ppe in ppes:
+                ppe_box = ppe['box']
+                iou = self._calculate_iou(person_box, ppe_box)
+
+                # A simple threshold to associate PPE with a person
+                if iou > 0:
+                    if ppe['class_id'] == self.config['discovery']['class_map'].get('helmet', -2):
+                        person_data['helmet'] = True
+                    elif ppe['class_id'] == self.config['discovery']['class_map'].get('vest', -3):
+                        person_data['vest'] = True
 
         # Check for violations
+        violations = []
         for person_id, equipment in persons.items():
             if not equipment['helmet']:
-                violations.append({'person_id': person_id, 'violation': self.config['violation_map'][self.config['helmet_class_id']]})
+                violations.append({'person_id': person_id, 'violation': 'Missing Helmet'})
             if not equipment['vest']:
-                violations.append({'person_id': person_id, 'violation': self.config['violation_map'][self.config['vest_class_id']]})
+                violations.append({'person_id': person_id, 'violation': 'Missing Vest'})
 
-
-        print(f"Detected {len(violations)} violations.")
+        if violations:
+            print(f"Detected {len(violations)} violations.")
         return violations
 
 if __name__ == '__main__':

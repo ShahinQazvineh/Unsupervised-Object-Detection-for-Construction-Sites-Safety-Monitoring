@@ -91,10 +91,24 @@ def prepare_dataset(data_fraction=1.0, random_state=42):
 
     if data_fraction < 1.0:
         print(f"Creating a stratified subset of the data with fraction: {data_fraction}")
-        # Stratified splitting with bounding boxes is more complex.
-        # For now, we'll just do a random split.
+
+        # Create a stratification key based on the unique classes present in each image
+        stratify_keys = []
+        for label_list in labels:
+            if not label_list:
+                # Handle images with no labels
+                stratify_keys.append(-1)
+            else:
+                # Use a tuple of sorted unique class IDs as the key
+                unique_classes = tuple(sorted(list(set(item['class_id'] for item in label_list))))
+                stratify_keys.append(unique_classes)
+
+        # Perform the stratified split
         image_paths, _, labels, _ = train_test_split(
-            image_paths, labels, train_size=data_fraction, random_state=random_state
+            image_paths, labels,
+            train_size=data_fraction,
+            random_state=random_state,
+            stratify=stratify_keys
         )
 
     print(f"Dataset prepared with {len(image_paths)} samples.")
