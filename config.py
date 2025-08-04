@@ -24,6 +24,7 @@ checkpoint_dir: 'output/checkpoints/'
 model:
   name: 'vit_small_patch14_dinov2'
   pretrained: True
+  out_dim: 65536 # Dimension of the DINO head output
   frozen_layers: 10 # Number of initial transformer blocks to freeze
 
 # -- Training Configuration --
@@ -34,6 +35,14 @@ training:
   optimizer: 'adam'
   resume_training: True # Flag to enable/disable resumable training
   data_fraction: 1.0 # Fraction of data to use for training (1.0 for all data)
+
+# -- DINO Configuration --
+dino:
+  n_crops: 10 # 2 global, 8 local
+  warmup_teacher_temp: 0.04
+  teacher_temp: 0.07
+  warmup_teacher_temp_epochs: 5
+  momentum_teacher: 0.9995
 
 # -- Discovery Configuration --
 discovery:
