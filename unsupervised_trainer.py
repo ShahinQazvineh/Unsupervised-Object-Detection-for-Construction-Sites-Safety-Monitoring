@@ -21,9 +21,8 @@ class UnsupervisedTrainer:
         # Make sure teacher and student have same weights
         self.teacher.load_state_dict(self.student.state_dict())
 
-        # Dynamically get the output dimension from the model head
-        out_dim = self.student.head.out_features
-        self.config['model']['out_dim'] = out_dim # Store it for reference if needed
+        # The output dimension is now set in the _build_model method
+        out_dim = self.config['model']['out_dim']
 
         self.dino_loss = DINOLoss(
             out_dim=out_dim,
@@ -40,8 +39,20 @@ class UnsupervisedTrainer:
     def _build_model(self):
         model_name = self.config['model']['name']
         pretrained = self.config['model']['pretrained']
+        out_dim = self.config['model'].get('out_dim', 65536) # Default DINO head dim
+
         print(f"Loading model: {model_name} (pretrained: {pretrained})")
-        model = timm.create_model(model_name, pretrained=pretrained)
+        model = timm.create_model(model_name, pretrained=pretrained, num_classes=0) # num_classes=0 removes head
+
+        # Get the embedding dimension from the model
+        in_features = model.embed_dim
+
+        # Create a DINO-compatible head and attach it
+        model.head = torch.nn.Linear(in_features, out_dim)
+
+        # Store the output dimension back in the config for the loss function
+        self.config['model']['out_dim'] = out_dim
+
         return model.to(self.device)
 
     def _build_optimizer(self):

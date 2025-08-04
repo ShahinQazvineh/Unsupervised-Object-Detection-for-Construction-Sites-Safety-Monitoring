@@ -24,7 +24,7 @@ checkpoint_dir: 'output/checkpoints/'
 model:
   name: 'vit_small_patch14_dinov2'
   pretrained: True
-  out_dim: 65536 # Dimension of the DINO head output
+  # out_dim is now set dynamically in the trainer
   frozen_layers: 10 # Number of initial transformer blocks to freeze
 
 # -- Training Configuration --
