@@ -5,7 +5,8 @@ from pathlib import Path
 # All paths, hyperparameters, and settings are managed here.
 CONFIG_YAML = """
 # --- Workflow and Path Configuration ---
-# project_root_path is now set dynamically below.
+# You can override this to your Google Drive path, for example.
+project_root_path: null
 
 # --- Data Source Configuration ---
 data_source: "roboflow"
@@ -24,7 +25,7 @@ checkpoint_dir: 'output/checkpoints/'
 model:
   name: 'vit_small_patch14_dinov2'
   pretrained: True
-  # out_dim is now set dynamically in the trainer
+  out_dim: 65536 # DINO default output dimension
   frozen_layers: 10 # Number of initial transformer blocks to freeze
 
 # -- Training Configuration --
@@ -65,12 +66,13 @@ except yaml.YAMLError as e:
     CONFIG = {}
 
 # --- Dynamic Path Construction ---
-# Set the project root path dynamically to the current working directory.
-# This makes the project more portable.
 if CONFIG:
-    # Set and create the project root path
-    project_root = Path.cwd()
-    CONFIG['project_root_path'] = str(project_root)
+    # Use the project_root_path from the config if it's set, otherwise default to CWD
+    if CONFIG.get('project_root_path'):
+        project_root = Path(CONFIG['project_root_path'])
+    else:
+        project_root = Path.cwd()
+        CONFIG['project_root_path'] = str(project_root)
 
     # Create absolute paths for other directories
     output_dir = project_root / CONFIG['output_dir']
@@ -80,7 +82,7 @@ if CONFIG:
     CONFIG['output_dir_abs'] = output_dir
     CONFIG['checkpoint_dir_abs'] = checkpoint_dir
 
-    # Create directories if they don't exist
+    # Create directories if they don't exist to prevent errors
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     (project_root / CONFIG['data_dir']).mkdir(parents=True, exist_ok=True)
