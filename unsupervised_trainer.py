@@ -21,8 +21,12 @@ class UnsupervisedTrainer:
         # Make sure teacher and student have same weights
         self.teacher.load_state_dict(self.student.state_dict())
 
+        # Dynamically get the output dimension from the model head
+        out_dim = self.student.head.out_features
+        self.config['model']['out_dim'] = out_dim # Store it for reference if needed
+
         self.dino_loss = DINOLoss(
-            out_dim=self.config['model']['out_dim'],
+            out_dim=out_dim,
             n_crops=self.config['dino']['n_crops'],
             warmup_teacher_temp=self.config['dino']['warmup_teacher_temp'],
             teacher_temp=self.config['dino']['teacher_temp'],
