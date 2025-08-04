@@ -92,24 +92,42 @@ def prepare_dataset(data_fraction=1.0, random_state=42):
     if data_fraction < 1.0:
         print(f"Creating a stratified subset of the data with fraction: {data_fraction}")
 
-        # Create a stratification key based on the unique classes present in each image
         stratify_keys = []
         for label_list in labels:
             if not label_list:
-                # Handle images with no labels
                 stratify_keys.append("none")
             else:
-                # Use a string representation of the sorted unique class IDs as the key
                 unique_classes = sorted(list(set(int(item['class_id']) for item in label_list)))
                 stratify_keys.append("-".join(map(str, unique_classes)))
 
-        # Perform the stratified split
-        image_paths, _, labels, _ = train_test_split(
-            image_paths, labels,
-            train_size=data_fraction,
-            random_state=random_state,
-            stratify=stratify_keys
-        )
+        # Separate data into splittable and non-splittable groups
+        unique_keys, counts = np.unique(stratify_keys, return_counts=True)
+        single_sample_keys = unique_keys[counts == 1]
+
+        splittable_indices = [i for i, key in enumerate(stratify_keys) if key not in single_sample_keys]
+        single_sample_indices = [i for i, key in enumerate(stratify_keys) if key in single_sample_keys]
+
+        splittable_images = [image_paths[i] for i in splittable_indices]
+        splittable_labels = [labels[i] for i in splittable_indices]
+        splittable_keys = [stratify_keys[i] for i in splittable_indices]
+
+        # Perform stratified split only on the splittable data
+        if len(splittable_images) > 1:
+            train_images, _, train_labels, _ = train_test_split(
+                splittable_images, splittable_labels,
+                train_size=data_fraction,
+                random_state=random_state,
+                stratify=splittable_keys
+            )
+        else:
+            train_images, train_labels = splittable_images, splittable_labels
+
+        # Add the single-sample-class images to the training set
+        for i in single_sample_indices:
+            train_images.append(image_paths[i])
+            train_labels.append(labels[i])
+
+        image_paths, labels = train_images, train_labels
 
     print(f"Dataset prepared with {len(image_paths)} samples.")
     return image_paths, labels
