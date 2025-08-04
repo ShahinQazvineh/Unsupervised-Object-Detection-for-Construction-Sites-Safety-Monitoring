@@ -97,11 +97,11 @@ def prepare_dataset(data_fraction=1.0, random_state=42):
         for label_list in labels:
             if not label_list:
                 # Handle images with no labels
-                stratify_keys.append(-1)
+                stratify_keys.append("none")
             else:
-                # Use a tuple of sorted unique class IDs as the key
-                unique_classes = tuple(sorted(list(set(item['class_id'] for item in label_list))))
-                stratify_keys.append(unique_classes)
+                # Use a string representation of the sorted unique class IDs as the key
+                unique_classes = sorted(list(set(int(item['class_id']) for item in label_list)))
+                stratify_keys.append("-".join(map(str, unique_classes)))
 
         # Perform the stratified split
         image_paths, _, labels, _ = train_test_split(
